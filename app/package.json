@@ -1,0 +1,19 @@
+{
+  "name": "antiktv-spa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test --test-reporter=spec"
+  },
+  "dependencies": {
+    "shaka-player": "4.10.10"
+  },
+  "devDependencies": {
+    "typescript": "5.5.4",
+    "vite": "5.4.0"
+  }
+}

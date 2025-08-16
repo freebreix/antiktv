@@ -1,0 +1,27 @@
+[Unit]
+Description=HDMI-CEC to uinput keyboard daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=kiosk
+Group=kiosk
+# Requires access to /dev/uinput and CEC adapter; ensure permissions by groups
+ExecStart=/usr/bin/python3 /opt/cec-input/cec-input.py --keymap /etc/cec-input/keymap.json
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,32 @@
+/* 10-foot UI styles */
+:root {
+  --bg: #0e0e12;
+  --fg: #f2f2f2;
+  --muted: #9aa0a6;
+  --accent: #2bb673;
+}
+html, body, #app-root { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; }
+
+.app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+.header { display:flex; justify-content: space-between; align-items: center; padding: 12px 16px; font-size: 24px; }
+.clock { font-variant-numeric: tabular-nums; }
+.player { position: relative; height: 100%; background: #000; }
+.video { width: 100%; height: 100%; background: #000; }
+.osd { position: absolute; left: 20px; bottom: 24px; background: rgba(0,0,0,0.6); padding: 12px 16px; border-radius: 8px; font-size: 24px; }
+.banner { position: absolute; top: 0; left: 0; right: 0; background: #b00020; color: #fff; padding: 8px 16px; text-align:center; display:none; }
+.banner.show { display:block; }
+
+.epg-grid { position:absolute; left:0; right:0; top:80px; bottom:0; background: rgba(20,20,24,0.96); overflow:auto; display:none; }
+.epg-grid.show { display:block; }
+.epg-row { display:grid; grid-template-columns: 240px repeat(6, 1fr); gap: 6px; padding: 6px; align-items:center; }
+.epg-row .ch { font-weight: 600; }
+.epg-row .prg { background:#1c1f24; padding:8px; border-radius:6px; }
+
+.channel-list { position:absolute; left:0; top:0; bottom:0; width: 460px; background: rgba(20,20,24,0.96); overflow:auto; display:none; }
+.channel-list.show { display:block; }
+.channel { padding: 12px 16px; display:flex; align-items:center; gap: 12px; }
+.channel.active { background: rgba(255,255,255,0.08); }
+
+.footer { padding: 8px 16px; font-size: 18px; color: var(--muted); }
+
+kbd { background: #333; border-radius: 4px; padding: 2px 6px; }

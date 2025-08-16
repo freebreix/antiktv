@@ -1,0 +1,29 @@
+[Unit]
+Description=AntikTV Kiosk (Chromium in cage Wayland compositor)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=kiosk
+# Use a private runtime dir to satisfy Wayland/Chromium requirements
+Environment=XDG_RUNTIME_DIR=/tmp/runtime-kiosk
+ExecStartPre=/bin/mkdir -p /tmp/runtime-kiosk
+ExecStartPre=/bin/chown kiosk:kiosk /tmp/runtime-kiosk
+# Start Chromium in kiosk via cage
+ExecStart=/usr/bin/cage -- /usr/bin/chromium \
+  --kiosk --incognito \
+  --noerrdialogs --autoplay-policy=no-user-gesture-required \
+  --ozone-platform=wayland --use-gl=egl \
+  --enable-features=UseOzonePlatform,VaapiVideoDecodeLinuxGL,VaapiVideoDecoder,CanvasOopRasterization,UseSkiaRenderer \
+  --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy \
+  --disable-pinch --overscroll-history-navigation=0 \
+  --no-first-run --disable-translate --disable-features=Translate \
+  file:///home/kiosk/app/index.html
+Restart=always
+RestartSec=3
+# Let Chromium find Wayland/DRM nodes
+SupplementaryGroups=video render input
+Environment=TZ=Europe/Vienna
+
+[Install]
+WantedBy=multi-user.target
