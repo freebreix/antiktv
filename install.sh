@@ -73,26 +73,28 @@ install -d -o root -g root /etc/cec-input
 install -m 0755 ${REPO_DIR}/cec-input/cec-input.py /opt/cec-input/cec-input.py
 install -m 0644 ${REPO_DIR}/cec-input/keymap.json /etc/cec-input/keymap.json
 
-# Build or copy app
+# Build or copy SvelteKit app (Node adapter -> build/)
 APP_SRC=${REPO_DIR}/app
 APP_DST=/home/${KIOSK_USER}/app
 install -d -o ${KIOSK_USER} -g ${KIOSK_USER} ${APP_DST}
-if [[ -d "${APP_SRC}/dist" ]]; then
-  info "Found prebuilt app/dist; copying"
+if [[ -d "${APP_SRC}/build" ]]; then
+  info "Found prebuilt app/build; copying"
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete ${APP_SRC}/dist/ ${APP_DST}/
+    rsync -a --delete ${APP_SRC}/build/ ${APP_DST}/build/
   else
-    cp -a ${APP_SRC}/dist/. ${APP_DST}/
+    mkdir -p ${APP_DST}/build
+    cp -a ${APP_SRC}/build/. ${APP_DST}/build/
   fi
 else
-  info "Building SPA with npm"
+  info "Building SvelteKit with npm"
   cd ${APP_SRC}
   npm ci || npm install
   npm run build
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete dist/ ${APP_DST}/
+    rsync -a --delete build/ ${APP_DST}/build/
   else
-    cp -a dist/. ${APP_DST}/
+    mkdir -p ${APP_DST}/build
+    cp -a build/. ${APP_DST}/build/
   fi
 fi
 chown -R ${KIOSK_USER}:${KIOSK_USER} ${APP_DST}
@@ -123,6 +125,7 @@ fi
 info "Installing systemd unit files"
 install -m 0644 ${REPO_DIR}/systemd/cec-input.service /etc/systemd/system/cec-input.service
 install -m 0644 ${REPO_DIR}/systemd/antik-kiosk.service /etc/systemd/system/antik-kiosk.service
+install -m 0644 ${REPO_DIR}/systemd/antik-web.service /etc/systemd/system/antik-web.service
 
 # If kiosk UID != 1001, patch XDG_RUNTIME_DIR in antik-kiosk.service
 if [[ "${ACT_UID}" != "${KIOSK_UID}" ]]; then
@@ -133,9 +136,22 @@ fi
 grep -q "runtime-kiosk" /etc/systemd/system/antik-kiosk.service && chmod 700 /tmp/runtime-kiosk || true
 
 systemctl daemon-reload
-systemctl enable cec-input.service antik-kiosk.service
+systemctl enable antik-web.service cec-input.service antik-kiosk.service
+
+# Create env file for web server if missing (credentials placeholder)
+if [[ ! -f /etc/antik-web.env ]]; then
+  cat >/etc/antik-web.env <<'EOF'
+# Set Antik credentials and device id here
+ANTIK_USER=
+ANTIK_PASS=
+# ANTIK_DEVICE_ID=AA11BB22CC33  # optional; if unset, a deterministic fallback is used
+EOF
+  chmod 600 /etc/antik-web.env
+  chown root:root /etc/antik-web.env
+fi
 
 info "Done. Next steps:"
-info "1) Ensure autologin for user 'kiosk' on tty1 (see README)."
-info "2) Optionally set WIDEVINE_SRC and rerun install.sh to install CDM into Chromium."
-info "3) Reboot: sudo systemctl reboot"
+info "1) Edit /home/kiosk/app/config.json with your AntikTV email and password."
+info "2) Ensure autologin for user 'kiosk' on tty1 (see README)."
+info "3) Optionally set WIDEVINE_SRC and rerun install.sh to install CDM into Chromium."
+info "4) Reboot: sudo systemctl reboot"

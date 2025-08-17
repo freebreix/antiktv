@@ -1,25 +1,15 @@
 {
   "arch": "armhf",
   "timezone": "Europe/Vienna",
+  "antik": {
+    "email": "your-email@example.com",
+    "password": "your-password",
+    "deviceId": ""
+  },
   "widevine": {
     "path": "/usr/lib/chromium/WidevineCdm/_platform_specific/linux_arm/libwidevinecdm.so"
   },
-  "channels": [
-  { "id": 1,  "name": "Channel One",   "logo": "assets/ch1.png",  "manifest": "https://example.com/channel1/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 2,  "name": "Channel Two",   "logo": "assets/ch2.png",  "manifest": "https://example.com/channel2/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 3,  "name": "Channel Three", "logo": "assets/ch3.png",  "manifest": "https://example.com/channel3/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 4,  "name": "Channel Four",  "logo": "assets/ch4.png",  "manifest": "https://example.com/channel4/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 5,  "name": "Channel Five",  "logo": "assets/ch5.png",  "manifest": "https://example.com/channel5/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 6,  "name": "Channel Six",   "logo": "assets/ch6.png",  "manifest": "https://example.com/channel6/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 7,  "name": "Channel Seven", "logo": "assets/ch7.png",  "manifest": "https://example.com/channel7/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 8,  "name": "Channel Eight", "logo": "assets/ch8.png",  "manifest": "https://example.com/channel8/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 9,  "name": "Channel Nine",  "logo": "assets/ch9.png",  "manifest": "https://example.com/channel9/manifest.mpd",  "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } },
-  { "id": 10, "name": "Channel Ten",   "logo": "assets/ch10.png", "manifest": "https://example.com/channel10/manifest.mpd", "drm": { "licenseServer": "https://license.example.com/wv", "headers": { "Authorization": "Bearer REPLACE_ME" } } }
-  ],
   "epg": {
-    "type": "xmltv",
-    "xmltvUrl": "https://example.com/epg.xml.gz",
-    "jsonUrl": null,
     "refreshMinutes": 20
   },
   "defaults": {

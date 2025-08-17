@@ -1,7 +1,8 @@
 [Unit]
 Description=AntikTV Kiosk (Chromium in cage Wayland compositor)
-After=network-online.target
+After=network-online.target antik-web.service
 Wants=network-online.target
+Requires=antik-web.service
 
 [Service]
 User=kiosk
@@ -18,7 +19,7 @@ ExecStart=/usr/bin/cage -- /usr/bin/chromium \
   --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy \
   --disable-pinch --overscroll-history-navigation=0 \
   --no-first-run --disable-translate --disable-features=Translate \
-  file:///home/kiosk/app/index.html
+  http://127.0.0.1:3000/
 Restart=always
 RestartSec=3
 # Let Chromium find Wayland/DRM nodes

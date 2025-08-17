@@ -1,0 +1,18 @@
+[Unit]
+Description=AntikTV SvelteKit Web Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kiosk
+WorkingDirectory=/home/kiosk/app
+EnvironmentFile=-/etc/antik-web.env
+ExecStart=/usr/bin/node build/index.js
+Restart=always
+RestartSec=3
+Environment=PORT=3000
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

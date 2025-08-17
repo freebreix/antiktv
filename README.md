@@ -190,6 +190,30 @@ Our unit passes a conservative set:
 - --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy
 - Optional: --widevine-path=/…/libwidevinecdm.so if not placed in Chromium tree
 
+Credentials
+
+Configure your AntikTV account in /home/kiosk/app/config.json:
+
+```json
+{
+  "antik": {
+    "email": "your-email@example.com",
+    "password": "your-password",
+    "deviceId": ""
+  }
+}
+```
+
+The deviceId can be left empty for automatic generation. For production deployments, you can also use environment variables:
+
+```
+ANTIK_USER=your-email@example.com
+ANTIK_PASS=your-password
+ANTIK_DEVICE_ID=your-device-id
+```
+
+Environment variables take precedence over config file settings.
+
 Security notes
 
 - Services run as unprivileged kiosk user; password login not required for boot.
@@ -232,3 +256,16 @@ Troubleshooting
 License
 
 MIT for code in this repo. You must supply your own Widevine CDM per its license.
+
+---
+
+SvelteKit SPA (development)
+
+- The interactive SPA lives under `app/` and can run locally with mock data.
+- To try real Antik credentials during dev:
+  1) `cd app`
+  2) copy `.env.example` to `.env` and set `ANTIK_EMAIL` and `ANTIK_PASSWORD`
+  3) `npm i` then `npm run dev`
+  4) Open http://localhost:5173
+
+Server endpoints will prefer real Antik data when env vars are present and fall back to sample data on errors.
