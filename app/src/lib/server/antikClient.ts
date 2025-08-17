@@ -41,12 +41,32 @@ export class AntikClient {
   private loggedIn = false;
   private triedAltRegion = false;
   private isRefreshingSession = false;
+  public persistentDeviceId: string;
 
   constructor(opts?: { baseUrl?: string; deviceId?: string; region?: AntikRegion }) {
     const env = getAntikEnv();
     const region = opts?.region || env.region || 'SK';
     this.baseUrl = opts?.baseUrl || env.apiUrl || defaultBaseUrl(region);
     this.deviceId = opts?.deviceId || env.deviceId;
+    // Use provided device ID, or fall back to persistent one if none provided
+    this.persistentDeviceId = opts?.deviceId || this.getOrCreatePersistentDeviceId();
+  }
+
+  private getOrCreatePersistentDeviceId(): string {
+    // Generate a consistent device ID that stays the same across requests
+    const env = getAntikEnv();
+    const seed = `antiktv-${env.email}-${this.baseUrl}`;
+    
+    // Simple hash function to create consistent device ID
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      const char = seed.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    const deviceSuffix = Math.abs(hash).toString(36).padStart(10, '0').slice(-10);
+    return `WebTV-antiktv-${deviceSuffix}`;
   }
 
   isConfigured() {
@@ -59,9 +79,6 @@ export class AntikClient {
       'Accept': '*/*',
       'Content-type': 'application/json;charset=UTF-8'
     };
-    // Remove extra headers that Kodi plugin doesn't use
-    // headers['x-requested-with'] = 'XMLHttpRequest';
-    // headers['referer'] = this.baseUrl;
     
     // X-XSRF-TOKEN if present
     if (this.cookies['XSRF-TOKEN']) {
@@ -75,7 +92,6 @@ export class AntikClient {
     
     // Debug logging
     console.log(`🔧 API Request: ${init?.method || 'GET'} ${this.baseUrl + path}`);
-    console.log(`🔧 Headers:`, headers);
     if (body) console.log(`🔧 Body:`, body);
     
   const res = await fetch(this.baseUrl + path, {
@@ -134,7 +150,7 @@ export class AntikClient {
       // Get CSRF cookie
       await this.request('sanctum/csrf-cookie');
       // Login
-  await this.request('login', { method: 'POST', json: { login: user, password: pass } });
+      await this.request('login', { method: 'POST', json: { login: user, password: pass } });
       if (!this.sessionCookieName() || !this.cookies['XSRF-TOKEN']) {
         throw new Error('Login failed: missing session or XSRF token');
       }
@@ -155,188 +171,39 @@ export class AntikClient {
       }
     }
     this.loggedIn = true;
-    // Check device registration but don't try to fix it automatically 
-    await this.ensureDeviceRegistration();
-  }
-
-  async ensureDeviceRegistration(): Promise<void> {
-    try {
-      console.log('🔧 Checking device registration status...');
-      
-      // Get user info to get device_id
-      const userInfo = await this.request('user');
-      if (!userInfo || !userInfo.device_id) {
-        throw new Error('Failed to get user device_id');
-      }
-      const userDeviceId = userInfo.device_id;
-      console.log('🔧 User device_id:', userDeviceId);
-      
-      // Get existing devices
-      const devices = await this.request('devices');
-      console.log('🔧 Existing devices count:', Array.isArray(devices) ? devices.length : 'not array');
-      
-      if (!Array.isArray(devices)) {
-        console.log('🔧 Devices response is not an array, continuing without device registration');
-        return;
-      }
-      
-      // Check if user's device_id matches any existing device
-      const matchingDevice = devices.find(device => device?.public_id === userDeviceId);
-      
-      if (matchingDevice) {
-        console.log('🔧 ✅ Found matching device:', matchingDevice.name, 'with public_id:', matchingDevice.public_id);
-        console.log('🔧 ✅ Device registration is valid - API should work');
-        return;
-      }
-      
-      console.log('🔧 ❌ User device_id not found in registered devices list');
-      console.log('🔧 Attempting to register device by freeing up a slot...');
-      
-      // Find the first device that looks like it could be removed (older WebTV devices)
-      const deviceToRemove = devices.find(device => 
-        device?.name?.includes('Zariadenie WebTV-') && 
-        device?.public_id?.startsWith('WebTV-')
-      );
-      
-      if (deviceToRemove) {
-        console.log('🔧 Found device to remove:', deviceToRemove.name, 'id:', deviceToRemove.id);
-        
-        // Delete the old device to free up a slot
-        await this.deleteDevice(deviceToRemove.id, deviceToRemove.name);
-        
-        // Now try to find a device that matches our current device_id
-        // (this might work after deletion + session refresh)
-        console.log('🔧 Device deleted, checking if registration is now possible...');
-        
-        // Get fresh device list and user info
-        const newDevices = await this.request('devices');
-        const newUserInfo = await this.request('user');
-        
-        if (Array.isArray(newDevices) && newUserInfo?.device_id) {
-          const newMatchingDevice = newDevices.find(device => device?.public_id === newUserInfo.device_id);
-          if (newMatchingDevice) {
-            console.log('🔧 ✅ Success! Device registration now valid after cleanup');
-            return;
-          }
-        }
-        
-        console.log('🔧 Device deletion completed but registration still not working');
-      } else {
-        console.log('🔧 ❌ No suitable device found to remove for registration');
-      }
-      
-      console.log('🔧 ❌ Device registration failed - this may cause 403 errors on API calls');
-      
-    } catch (error) {
-      console.error('🔧 Device registration failed:', error instanceof Error ? error.message : String(error));
-      // Continue anyway
-    }
-  }
-
-  async deleteDevice(deviceId: number, deviceName: string): Promise<void> {
-    try {
-      console.log('🔧 Deleting device:', deviceName, 'with id:', deviceId);
-      
-      const env = getAntikEnv();
-      const deleteData = {
-        device_id: deviceId,
-        device_id_name: deviceName,
-        password: env.password
-      };
-      
-      await this.request('removeDevice', { method: 'POST', json: deleteData });
-      console.log('🔧 ✅ Device deleted successfully');
-      
-    } catch (error) {
-      console.error('🔧 ❌ Failed to delete device:', error instanceof Error ? error.message : String(error));
-      throw error;
-    }
   }
 
   async getChannels(): Promise<Channel[]> {
     await this.login();
     
-    // Debug: First try to get user info to verify authentication
-    try {
-      const userInfo = await this.request('user');
-      console.log('🔧 User info retrieved:', !!userInfo);
-    } catch (userError) {
-      console.log('🔧 User info failed:', userError instanceof Error ? userError.message : String(userError));
-    }
-    
-    // Try the channels API
     const post = { type: 'TV', meta: { adult: true, promo: true } };
     console.log('🔧 Channels request payload:', post);
     
-    try {
-      const response = await this.request('channels', { method: 'POST', json: post });
-      console.log('🔧 Channels response structure:', Object.keys(response || {}));
-      console.log('🔧 Full response:', response);
-      
-      const out: Channel[] = [];
-      
-      // Try different response structures
-      if (response && response.result && response.result.channels) {
-        // Structure: { result: { channels: [...] } }
-        console.log('🔧 Using result.channels structure');
-        for (const ch of response.result.channels) {
-          const detail = ch.channel_detail || ch;
-          out.push({
-            id: String(detail.channel_id || detail.id_content || detail.id),
-            name: detail.display_name || detail.name,
-            logo: detail.picture || detail.logo || undefined,
-            url: '',
-            number: Number(detail.id) || undefined,
-            group: undefined
-          });
-        }
-      } else if (response && response.data) {
-        // Original structure: { data: {...} }
-        console.log('🔧 Using data structure');
-        for (const key of Object.keys(response.data)) {
-          const ch = response.data[key];
-          const id = String(ch.id_content);
-          out.push({
-            id,
-            name: ch.name,
-            logo: ch.logo || undefined,
-            url: '',
-            number: Number(ch.id) || undefined,
-            group: undefined
-          });
-        }
-      } else if (Array.isArray(response)) {
-        // Array structure: [...]
-        console.log('🔧 Using array structure');
-        for (const ch of response) {
-          out.push({
-            id: String(ch.id_content || ch.id || ch.channel_id),
-            name: ch.name || ch.display_name,
-            logo: ch.logo || ch.picture || undefined,
-            url: '',
-            number: Number(ch.id) || undefined,
-            group: undefined
-          });
-        }
-      } else {
-        console.log('🔧 Unknown response structure:', response);
+    const response = await this.request('channels', { method: 'POST', json: post });
+    console.log('🔧 Channels response structure:', Object.keys(response || {}));
+    
+    const out: Channel[] = [];
+    
+    // Use the data structure
+    if (response && response.data) {
+      console.log('🔧 Using data structure');
+      for (const key of Object.keys(response.data)) {
+        const ch = response.data[key];
+        const id = String(ch.id_content);
+        out.push({
+          id,
+          name: ch.name,
+          logo: ch.logo || undefined,
+          url: '',
+          number: Number(ch.id) || undefined,
+          group: undefined
+        });
       }
-      
-      return out;
-    } catch (channelsError) {
-      console.log('🔧 Channels API failed, trying alternative endpoints...');
-      
-      // Try alternative endpoint
-      try {
-        const altResponse = await this.request('channel/list', { method: 'GET' });
-        console.log('🔧 Alternative endpoint response:', altResponse);
-        // Handle alternative response...
-        return [];
-      } catch (altError) {
-        console.log('🔧 Alternative endpoint also failed:', altError instanceof Error ? altError.message : String(altError));
-        throw channelsError; // Re-throw original error
-      }
+    } else {
+      throw new Error('Unexpected channels response structure');
     }
+    
+    return out;
   }
 
   async getEpg(now = Date.now()): Promise<Program[]> {
@@ -387,4 +254,18 @@ export class AntikClient {
   getCookieHeader(): string {
     return cookiesHeader(this.cookies);
   }
+}
+
+// Global singleton instance to maintain session state across requests
+let globalAntikClient: AntikClient | null = null;
+
+export function getGlobalAntikClient(deviceId?: string): AntikClient {
+  if (!globalAntikClient) {
+    globalAntikClient = new AntikClient({ deviceId });
+  } else if (deviceId && globalAntikClient.persistentDeviceId !== deviceId) {
+    // If device ID changed, create a new instance
+    console.log('🔧 Device ID changed, creating new client instance');
+    globalAntikClient = new AntikClient({ deviceId });
+  }
+  return globalAntikClient;
 }

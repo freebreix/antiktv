@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { AntikClient } from '$lib/server/antikClient';
+import { getGlobalAntikClient } from '$lib/server/antikClient';
 import { json } from '@sveltejs/kit';
 
 export const GET: RequestHandler = async () => {
@@ -24,7 +24,7 @@ export const GET: RequestHandler = async () => {
       console.log('- Email value:', env.email);
     }
     
-    const client = new AntikClient();
+    const client = getGlobalAntikClient();
     
     // Test 1: Configuration check
     const isConfigured = client.isConfigured();

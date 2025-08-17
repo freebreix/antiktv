@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { AntikClient } from '$lib/server/antikClient';
+import { getGlobalAntikClient } from '$lib/server/antikClient';
 
 // Simple rate limiting to prevent infinite loops
 const requestTimestamps: number[] = [];
@@ -91,8 +91,8 @@ export const POST: RequestHandler = async ({ request }) => {
     const requestHeaders = Object.fromEntries(request.headers.entries());
     console.log('🔐 DRM Proxy: Incoming headers:', requestHeaders);
     
-    // Create client instance and ensure we're logged in
-    const client = new AntikClient();
+    // Use global client instance and ensure we're logged in
+    const client = getGlobalAntikClient();
     await client.login();
     console.log('🔐 DRM Proxy: Authenticated with Antik API');
     

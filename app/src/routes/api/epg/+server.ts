@@ -1,6 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { buildSamplePrograms } from "$lib/server/sample";
-import { AntikClient } from "$lib/server/antikClient";
+import { getGlobalAntikClient } from "$lib/server/antikClient";
 import { isAntikConfigured } from "$lib/server/env";
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -9,7 +9,7 @@ export const GET: RequestHandler = async ({ url }) => {
   const requireReal = url.searchParams.get('real') === '1';
   try {
     if (isAntikConfigured()) {
-      const client = new AntikClient();
+      const client = getGlobalAntikClient();
       const programs = await client.getEpg(now);
       if (programs.length) {
         return new Response(JSON.stringify(programs), { headers: { "content-type": "application/json" } });

@@ -1,21 +1,31 @@
-import type { RequestHandler } from "@sveltejs/kit";
-import { sampleChannels } from "$lib/server/sample";
-import { AntikClient } from "$lib/server/antikClient";
-import { isAntikConfigured } from "$lib/server/env";
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { getGlobalAntikClient } from '$lib/server/antikClient';
 
-export const GET: RequestHandler = async ({ url }) => {
-  const requireReal = url.searchParams.get('real') === '1';
-  if (isAntikConfigured()) {
-    try {
-      const client = new AntikClient();
-      const channels = await client.getChannels();
-      if (channels.length) {
-        return new Response(JSON.stringify(channels), { headers: { "content-type": "application/json" } });
-      }
-    } catch (e) {
-      if (requireReal) return new Response(JSON.stringify({ error: String(e) }), { status: 502 });
-    }
+export const GET: RequestHandler = async ({ request }) => {
+  try {
+    console.log('📡 Channels API - Starting request');
+    
+    const deviceId = request.headers.get('X-Device-ID');
+    console.log('📡 Channels API - Device ID from header:', deviceId);
+    
+    const client = getGlobalAntikClient(deviceId || undefined);
+    const channels = await client.getChannels();
+    
+    console.log('📡 Channels API - Success:', channels.length, 'channels');
+    
+    return json({
+      success: true,
+      channels: channels
+    });
+    
+  } catch (error) {
+    console.error('📡 Channels API - Error:', error);
+    
+    return json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      channels: []
+    }, { status: 500 });
   }
-  if (requireReal) return new Response(JSON.stringify([]), { headers: { "content-type": "application/json" } });
-  return new Response(JSON.stringify(sampleChannels), { headers: { "content-type": "application/json" } });
 };
