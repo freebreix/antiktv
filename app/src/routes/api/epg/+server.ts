@@ -1,24 +1,41 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { buildSamplePrograms } from "$lib/server/sample";
 import { getGlobalAntikClient } from "$lib/server/antikClient";
 import { isAntikConfigured } from "$lib/server/env";
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, cookies }) => {
   const nowParam = url.searchParams.get("now");
   const now = nowParam ? Number(nowParam) : Date.now();
-  const requireReal = url.searchParams.get('real') === '1';
+  const channelId = url.searchParams.get('channel');
+  
   try {
     if (isAntikConfigured()) {
-      const client = getGlobalAntikClient();
+      // Get device ID from cookie
+      const deviceId = cookies.get('device-id');
+      const client = getGlobalAntikClient(deviceId);
       const programs = await client.getEpg(now);
+      
       if (programs.length) {
-        return new Response(JSON.stringify(programs), { headers: { "content-type": "application/json" } });
+        // Filter by channel if specified
+        const filteredPrograms = channelId 
+          ? programs.filter(program => program.channelId === channelId)
+          : programs;
+        
+        return new Response(JSON.stringify({
+          success: true,
+          programs: filteredPrograms
+        }), { headers: { "content-type": "application/json" } });
       }
     }
   } catch (e) {
-    if (requireReal) return new Response(JSON.stringify({ error: String(e) }), { status: 502 });
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: String(e) 
+    }), { status: 502 });
   }
-  if (requireReal) return new Response(JSON.stringify([]), { headers: { "content-type": "application/json" } });
-  const programs = buildSamplePrograms(now);
-  return new Response(JSON.stringify(programs), { headers: { "content-type": "application/json" } });
+  
+  // If no real data available, return empty array
+  return new Response(JSON.stringify({
+    success: true,
+    programs: []
+  }), { headers: { "content-type": "application/json" } });
 };

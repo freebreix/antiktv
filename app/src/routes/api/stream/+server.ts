@@ -17,8 +17,11 @@ export const GET: RequestHandler = async ({ url, request }) => {
     
     const deviceId = request.headers.get('X-Device-ID');
     console.log('📡 Stream API - Device ID from header:', deviceId);
+    console.log('📡 Stream API - All headers:', Object.fromEntries(request.headers.entries()));
     
     const client = getGlobalAntikClient(deviceId || undefined);
+    console.log('📡 Stream API - Using client with deviceId:', client.persistentDeviceId);
+    
     const streamUrl = await client.getStreamUrl(channelId);
     
     console.log('📡 Stream API - Success:', streamUrl);

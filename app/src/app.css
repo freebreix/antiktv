@@ -12,9 +12,19 @@
 
 html, body, #svelte {
   height: 100%;
+  overflow: hidden; /* Prevent scrollbars on main containers */
+  margin: 0;
+  padding: 0;
+  width: 100%;
 }
 
 body {
   margin: 0;
+  padding: 0;
   font-family: var(--font-sans);
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
 }

@@ -50,6 +50,12 @@ export class AntikClient {
     this.deviceId = opts?.deviceId || env.deviceId;
     // Use provided device ID, or fall back to persistent one if none provided
     this.persistentDeviceId = opts?.deviceId || this.getOrCreatePersistentDeviceId();
+    
+    console.log('🔧 AntikClient created with:');
+    console.log('🔧 - baseUrl:', this.baseUrl);
+    console.log('🔧 - provided deviceId:', opts?.deviceId);
+    console.log('🔧 - env deviceId:', env.deviceId);
+    console.log('🔧 - final persistentDeviceId:', this.persistentDeviceId);
   }
 
   private getOrCreatePersistentDeviceId(): string {
@@ -74,61 +80,98 @@ export class AntikClient {
   }
 
   private async request(path: string, init?: RequestInit & { json?: any }): Promise<any> {
-  const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0',
-      'Accept': '*/*',
-      'Content-type': 'application/json;charset=UTF-8'
-    };
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second
     
-    // X-XSRF-TOKEN if present
-    if (this.cookies['XSRF-TOKEN']) {
-      // token may be quoted in cookie; strip quotes when sending header
-      headers['x-xsrf-token'] = this.cookies['XSRF-TOKEN'].replace(/^"|"$/g, '');
-    }
-    // Cookie header
-    if (Object.keys(this.cookies).length) headers['cookie'] = cookiesHeader(this.cookies);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const headers: Record<string, string> = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0',
+          'Accept': '*/*',
+          'Content-type': 'application/json;charset=UTF-8'
+        };
+        
+        // X-XSRF-TOKEN if present
+        if (this.cookies['XSRF-TOKEN']) {
+          // token may be quoted in cookie; strip quotes when sending header
+          headers['x-xsrf-token'] = this.cookies['XSRF-TOKEN'].replace(/^"|"$/g, '');
+        }
+        // Cookie header
+        if (Object.keys(this.cookies).length) headers['cookie'] = cookiesHeader(this.cookies);
 
-    const body = init?.json !== undefined ? JSON.stringify(init.json) : init?.body;
-    
-    // Debug logging
-    console.log(`🔧 API Request: ${init?.method || 'GET'} ${this.baseUrl + path}`);
-    if (body) console.log(`🔧 Body:`, body);
-    
-  const res = await fetch(this.baseUrl + path, {
-      method: init?.method || 'GET',
-      headers,
-      body
-    });
-    // capture cookies
-    let combined: string[] = [];
-    const anyHeaders: any = res.headers as any;
-    const arr = anyHeaders.getSetCookie?.();
-    if (Array.isArray(arr)) {
-      combined = arr;
-    } else {
-      // Fallback: try different methods to get set-cookie headers
-      if (typeof res.headers.entries === 'function') {
-        for (const [k, v] of res.headers.entries()) {
-          if (String(k).toLowerCase() === 'set-cookie') combined.push(v as string);
+        const body = init?.json !== undefined ? JSON.stringify(init.json) : init?.body;
+        
+        // Debug logging
+        console.log(`🔧 API Request: ${init?.method || 'GET'} ${this.baseUrl + path} (attempt ${attempt}/${maxRetries})`);
+        if (body) console.log(`🔧 Body:`, body);
+        
+        const res = await fetch(this.baseUrl + path, {
+          method: init?.method || 'GET',
+          headers,
+          body
+        });
+        
+        // Handle 502 Bad Gateway - retry if not the last attempt
+        if (res.status === 502 && attempt < maxRetries) {
+          console.warn(`🔧 Received 502 Bad Gateway, retrying in ${retryDelay}ms (attempt ${attempt}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue; // Retry the request
+        }
+        
+        // capture cookies
+        let combined: string[] = [];
+        const anyHeaders: any = res.headers as any;
+        const arr = anyHeaders.getSetCookie?.();
+        if (Array.isArray(arr)) {
+          combined = arr;
+        } else {
+          // Fallback: try different methods to get set-cookie headers
+          if (typeof res.headers.entries === 'function') {
+            for (const [k, v] of res.headers.entries()) {
+              if (String(k).toLowerCase() === 'set-cookie') combined.push(v as string);
+            }
+          }
+          if (combined.length === 0) {
+            const single = res.headers.get('set-cookie');
+            if (single) combined.push(single);
+          }
+        }
+        const parsed = parseSetCookies(combined.length ? combined.join('\n') : null);
+        this.cookies = { ...this.cookies, ...parsed };
+
+        if (!res.ok) {
+          // Try to parse error payload
+          let err: any = undefined;
+          try { err = await res.text(); } catch {}
+          throw new Error(`Antik API ${path} failed: ${res.status} ${res.statusText} ${err ?? ''}`);
+        }
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) return res.json();
+        return res.text();
+      } catch (error) {
+        // If it's the last attempt or not a retry-able error, throw
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        
+        // Check if the error is worth retrying (network errors, timeouts)
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const isRetryableError = errorMessage.includes('fetch') || 
+                               errorMessage.includes('network') || 
+                               errorMessage.includes('timeout') ||
+                               errorMessage.includes('ECONNRESET') ||
+                               errorMessage.includes('ETIMEDOUT');
+        
+        if (isRetryableError) {
+          console.warn(`🔧 Network error on attempt ${attempt}/${maxRetries}, retrying in ${retryDelay}ms:`, errorMessage);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue; // Retry the request
+        } else {
+          // Non-retryable error, throw immediately
+          throw error;
         }
       }
-      if (combined.length === 0) {
-        const single = res.headers.get('set-cookie');
-        if (single) combined.push(single);
-      }
     }
-    const parsed = parseSetCookies(combined.length ? combined.join('\n') : null);
-    this.cookies = { ...this.cookies, ...parsed };
-
-    if (!res.ok) {
-      // Try to parse error payload
-      let err: any = undefined;
-      try { err = await res.text(); } catch {}
-      throw new Error(`Antik API ${path} failed: ${res.status} ${res.statusText} ${err ?? ''}`);
-    }
-    const ct = res.headers.get('content-type') || '';
-    if (ct.includes('application/json')) return res.json();
-    return res.text();
   }
 
   private sessionCookieName(): string | null {
@@ -154,6 +197,8 @@ export class AntikClient {
       if (!this.sessionCookieName() || !this.cookies['XSRF-TOKEN']) {
         throw new Error('Login failed: missing session or XSRF token');
       }
+      // Register device after successful login
+      await this.registerDevice();
     };
 
     try {
@@ -171,6 +216,85 @@ export class AntikClient {
       }
     }
     this.loggedIn = true;
+  }
+
+  private async registerDevice(): Promise<void> {
+    try {
+      console.log('🔧 Registering device with name:', this.persistentDeviceId);
+      
+      // Get current user info to get device_id
+      const userResponse = await this.request('user', { method: 'GET' });
+      if (!userResponse?.device_id) {
+        throw new Error('Failed to get device_id from user endpoint');
+      }
+      const currentDeviceId = userResponse.device_id;
+      console.log('🔧 Current device_id:', currentDeviceId);
+
+      // Get list of existing devices
+      const devices = await this.getDevices();
+      console.log('🔧 Existing devices:', devices);
+
+      // Find and delete any device with our desired name
+      for (const [deviceId, deviceInfo] of Object.entries(devices)) {
+        if (deviceInfo.name === this.persistentDeviceId) {
+          console.log('🔧 Deleting existing device with same name:', deviceId);
+          await this.deleteDevice(deviceId, deviceInfo.name);
+        }
+      }
+
+      // Refresh devices list after deletion
+      const updatedDevices = await this.getDevices();
+      
+      // Find our current device by public_id and rename it
+      for (const [deviceId, deviceInfo] of Object.entries(updatedDevices)) {
+        if (deviceInfo.public_id === currentDeviceId) {
+          console.log('🔧 Renaming device', deviceId, 'to', this.persistentDeviceId);
+          await this.request('changeDeviceName', {
+            method: 'POST',
+            json: {
+              device_id: parseInt(deviceId),
+              newName: this.persistentDeviceId
+            }
+          });
+          return;
+        }
+      }
+      
+      console.warn('🔧 Could not find current device to rename');
+    } catch (error) {
+      console.error('🔧 Device registration failed:', error);
+      // Don't throw - allow login to continue even if device registration fails
+    }
+  }
+
+  private async getDevices(): Promise<Record<string, { name: string; public_id: string }>> {
+    const response = await this.request('devices', { method: 'GET' });
+    const devices: Record<string, { name: string; public_id: string }> = {};
+    
+    if (Array.isArray(response)) {
+      for (const device of response) {
+        if (device.id) {
+          devices[device.id] = {
+            name: device.name,
+            public_id: device.public_id
+          };
+        }
+      }
+    }
+    
+    return devices;
+  }
+
+  private async deleteDevice(deviceId: string, deviceName: string): Promise<void> {
+    const env = getAntikEnv();
+    await this.request('removeDevice', {
+      method: 'POST',
+      json: {
+        device_id: parseInt(deviceId),
+        device_id_name: deviceName,
+        password: env.password
+      }
+    });
   }
 
   async getChannels(): Promise<Channel[]> {
@@ -203,7 +327,11 @@ export class AntikClient {
       throw new Error('Unexpected channels response structure');
     }
     
-    return out;
+    // Trim the first 11 channels
+    const trimmedChannels = out.slice(11);
+    console.log(`🔧 Trimmed first 11 channels, returning ${trimmedChannels.length}/${out.length} channels`);
+    
+    return trimmedChannels;
   }
 
   async getEpg(now = Date.now()): Promise<Program[]> {
@@ -267,5 +395,6 @@ export function getGlobalAntikClient(deviceId?: string): AntikClient {
     console.log('🔧 Device ID changed, creating new client instance');
     globalAntikClient = new AntikClient({ deviceId });
   }
+  // If no device ID is provided, reuse the existing client
   return globalAntikClient;
 }
