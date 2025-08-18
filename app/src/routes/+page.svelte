@@ -44,6 +44,7 @@
   // UI state
   let showChannelSelector = $state(false);
   let selectorTimeout: number | null = null;
+  let channelChangeTimeout: number | null = null; // Debounce timeout for Page Up/Down
   let currentTime = $state<string>("00:00");
   let previewChannelIndex = $state<number | null>(null); // Simplified: just track which channel is being previewed
   let isConnectionLost = $state(false);
@@ -130,6 +131,9 @@
       window.removeEventListener("keydown", handleKeydown);
       if (dashPlayer) {
         dashPlayer.reset();
+      }
+      if (channelChangeTimeout) {
+        clearTimeout(channelChangeTimeout);
       }
     };
   });
@@ -430,7 +434,7 @@
         console.warn("🎬 Video stalled - possible connection issue");
         // Set connection lost after 10 seconds of stalling
         setTimeout(() => {
-          if (videoElement?.readyState < 3) {
+          if (videoElement && videoElement?.readyState < 3) {
             isConnectionLost = true;
           }
         }, 10000);
@@ -486,6 +490,36 @@
     dashPlayer.initialize(videoElement, currentStreamUrl, true);
   }
 
+  // Reset the selector auto-hide timeout
+  function resetSelectorTimeout() {
+    if (selectorTimeout) {
+      clearTimeout(selectorTimeout);
+    }
+    selectorTimeout = setTimeout(() => {
+      showChannelSelector = false;
+      selectedChannelIndex = playingChannelIndex;
+      previewChannelIndex = null;
+      previewProgram = null;
+      previewUpcomingShows = [];
+    }, 5000);
+  }
+
+  // Scroll to the currently selected channel
+  function scrollToSelectedChannel(instant = true) {
+    setTimeout(() => {
+      const channelContainer = document.querySelector(".channels-horizontal");
+      const selectedChannel = document.querySelector(".channel-item.selected");
+
+      if (channelContainer && selectedChannel) {
+        selectedChannel.scrollIntoView({
+          behavior: instant ? "instant" : "smooth",
+          block: "nearest",
+          inline: "center",
+        });
+      }
+    }, 10);
+  }
+
   // Show channel selector overlay
   function showSelector() {
     showChannelSelector = true;
@@ -497,18 +531,11 @@
       updatePreviewEpg();
     }
 
-    // Auto-hide after 5 seconds of no interaction
-    if (selectorTimeout) {
-      clearTimeout(selectorTimeout);
-    }
-    selectorTimeout = setTimeout(() => {
-      showChannelSelector = false;
-      // Reset to playing channel when overlay disappears
-      selectedChannelIndex = playingChannelIndex;
-      previewChannelIndex = null;
-      previewProgram = null;
-      previewUpcomingShows = [];
-    }, 5000);
+    // Scroll to selected channel when showing
+    scrollToSelectedChannel();
+
+    // Set auto-hide timeout
+    resetSelectorTimeout();
   }
 
   // Change channel and reload video
@@ -529,24 +556,9 @@
       // Update preview EPG data
       updatePreviewEpg();
 
-      // Auto-scroll to keep selected channel visible
+      // Scroll to the newly selected channel if selector is visible
       if (showChannelSelector) {
-        setTimeout(() => {
-          const channelContainer = document.querySelector(
-            ".channels-horizontal"
-          );
-          const selectedChannel = document.querySelector(
-            ".channel-item.selected"
-          );
-
-          if (channelContainer && selectedChannel) {
-            selectedChannel.scrollIntoView({
-              behavior: "smooth",
-              block: "nearest",
-              inline: "center",
-            });
-          }
-        }, 50);
+        scrollToSelectedChannel(false);
       }
     }
   }
@@ -570,6 +582,18 @@
     previewChannelIndex = null;
     previewProgram = null;
     previewUpcomingShows = [];
+  }
+
+  // Debounced channel change for Page Up/Down (2 second delay)
+  function debouncedChannelChange() {
+    if (channelChangeTimeout) {
+      clearTimeout(channelChangeTimeout);
+    }
+
+    channelChangeTimeout = setTimeout(async () => {
+      await selectCurrentChannel();
+      channelChangeTimeout = null;
+    }, 2000);
   }
 
   // Setup keyboard navigation
@@ -597,7 +621,7 @@
     if (event.key in numberChannelMap) {
       event.preventDefault();
       const targetChannel = numberChannelMap[event.key];
-      if (targetChannel < channels.length) {
+      if (targetChannel !== undefined && targetChannel < channels.length) {
         selectedChannelIndex = targetChannel;
         selectCurrentChannel();
       }
@@ -615,13 +639,21 @@
       case "ArrowUp": // Also allow up/down for channel navigation
         event.preventDefault();
         navigateChannels(-1);
-        showSelector(); // Reset timeout
+        if (showChannelSelector) {
+          resetSelectorTimeout();
+        } else {
+          showSelector();
+        }
         break;
       case "ArrowRight":
       case "ArrowDown": // Also allow up/down for channel navigation
         event.preventDefault();
         navigateChannels(1);
-        showSelector(); // Reset timeout
+        if (showChannelSelector) {
+          resetSelectorTimeout();
+        } else {
+          showSelector();
+        }
         break;
 
       // Enter key - select channel or show selector
@@ -652,13 +684,33 @@
       // Page Up/Down for channel navigation (channel_up/channel_down from keymap)
       case "PageUp": // KEY_PAGEUP from keymap
         event.preventDefault();
-        navigateChannels(-1);
-        showSelector();
+        if (selectedChannelIndex > 0) {
+          selectedChannelIndex = selectedChannelIndex - 1;
+          previewChannelIndex = selectedChannelIndex;
+          updatePreviewEpg();
+          if (!showChannelSelector) {
+            showSelector();
+          } else {
+            scrollToSelectedChannel();
+            resetSelectorTimeout();
+          }
+          debouncedChannelChange();
+        }
         break;
       case "PageDown": // KEY_PAGEDOWN from keymap
         event.preventDefault();
-        navigateChannels(1);
-        showSelector();
+        if (selectedChannelIndex < channels.length - 1) {
+          selectedChannelIndex = selectedChannelIndex + 1;
+          previewChannelIndex = selectedChannelIndex;
+          updatePreviewEpg();
+          if (!showChannelSelector) {
+            showSelector();
+          } else {
+            scrollToSelectedChannel();
+            resetSelectorTimeout();
+          }
+          debouncedChannelChange();
+        }
         break;
 
       // Play/Pause toggle (p key from keymap handles both play and pause)
@@ -681,7 +733,7 @@
 <svelte:head>
   <title>{currentChannelInfo?.name || "AntikTV"}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
   <link
     href="https://fonts.googleapis.com/css2?family=Mona+Sans:ital,wght@0,200..900;1,200..900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap"
     rel="stylesheet"
@@ -847,666 +899,35 @@
       </div>
 
       <!-- Bottom section - Channel Selector -->
-      {#if showChannelSelector}
-        <div class="overlay-bottom">
-          <div class="channel-selector">
-            <div class="channels-horizontal">
-              {#each channels as channel, index}
-                <button
-                  class="channel-item"
-                  class:selected={index === selectedChannelIndex}
-                  onclick={() => {
-                    selectedChannelIndex = index;
-                    previewChannelIndex = index;
-                    updatePreviewEpg();
-                    showSelector();
-                  }}
-                >
-                  {#if channel.logo}
-                    <img
-                      src={channel.logo}
-                      alt={channel.name}
-                      class="channel-logo"
-                    />
-                  {/if}
-                  <div class="channel-details">
-                    <span class="channel-name">{channel.name}</span>
-                  </div>
-                </button>
-              {/each}
-            </div>
+      <div class="overlay-bottom" class:show={showChannelSelector}>
+        <div class="channel-selector">
+          <div class="channels-horizontal">
+            {#each channels as channel, index}
+              <button
+                class="channel-item"
+                class:selected={index === selectedChannelIndex}
+                onclick={() => {
+                  selectedChannelIndex = index;
+                  previewChannelIndex = index;
+                  updatePreviewEpg();
+                  showSelector();
+                }}
+              >
+                {#if channel.logo}
+                  <img
+                    src={channel.logo}
+                    alt={channel.name}
+                    class="channel-logo"
+                  />
+                {/if}
+                <div class="channel-details">
+                  <span class="channel-name">{channel.name}</span>
+                </div>
+              </button>
+            {/each}
           </div>
         </div>
-      {/if}
+      </div>
     </div>
   </main>
 {/if}
-
-<style>
-  /* Global Font Styles */
-  * {
-    font-family:
-      "Roboto",
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
-  }
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6,
-  .title {
-    font-family:
-      "Mona Sans",
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
-  }
-
-  .loading-screen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    background: #000;
-    color: #fff;
-  }
-
-  .loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #333;
-    border-top: 4px solid #fff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 20px;
-  }
-
-  @keyframes spin {
-    0% {
-      transform: rotate(0deg);
-    }
-    100% {
-      transform: rotate(360deg);
-    }
-  }
-
-  .error-screen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    background: #000;
-    color: #fff;
-    text-align: center;
-    padding: 20px;
-  }
-
-  .tv-player {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    background: #000;
-    overflow: hidden;
-  }
-
-  .video-container {
-    width: 100%;
-    height: 100%;
-  }
-
-  .main-video {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    cursor: pointer;
-  }
-
-  /* Video Placeholder */
-  .video-placeholder {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, #1a1a2e, #16213e);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1;
-  }
-
-  .placeholder-content {
-    text-align: center;
-    color: #fff;
-  }
-
-  .placeholder-content h1 {
-    font-size: 3rem;
-    font-weight: 700;
-    margin: 0 0 20px 0;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  .placeholder-content p {
-    font-size: 1.2rem;
-    opacity: 0.8;
-    margin: 0;
-  }
-
-  /* Modern Loading Animation */
-  .loading-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 20;
-  }
-
-  .modern-loader {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .sk-wave {
-    width: 90px;
-    height: 60px;
-    margin: auto;
-    text-align: center;
-    font-size: 1em;
-  }
-
-  .sk-rect {
-    background-color: #6496ff;
-    height: 100%;
-    width: 0.5em;
-    display: inline-block;
-    margin: 0 2px;
-    animation: sk-wave-stretch-delay 1.2s infinite ease-in-out;
-  }
-
-  .sk-rect-1 {
-    animation-delay: -1.2s;
-  }
-  .sk-rect-2 {
-    animation-delay: -1.1s;
-  }
-  .sk-rect-3 {
-    animation-delay: -1s;
-  }
-  .sk-rect-4 {
-    animation-delay: -0.9s;
-  }
-  .sk-rect-5 {
-    animation-delay: -0.8s;
-  }
-
-  @keyframes sk-wave-stretch-delay {
-    0%,
-    40%,
-    100% {
-      transform: scaleY(0.4);
-    }
-    20% {
-      transform: scaleY(1);
-    }
-  }
-
-  .modern-loader p {
-    color: #fff;
-    font-size: 1.1rem;
-    font-weight: 500;
-    margin: 0;
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  /* Connection Lost Overlay */
-  .connection-lost-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 25;
-  }
-
-  .connection-lost-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    text-align: center;
-    color: #fff;
-  }
-
-  .connection-icon {
-    width: 80px;
-    height: 80px;
-    color: #ff6b6b;
-    opacity: 0.8;
-    animation: pulse 2s ease-in-out infinite;
-  }
-
-  .connection-lost-content h2 {
-    font-size: 2rem;
-    font-weight: 600;
-    margin: 0;
-    text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9);
-    color: #ff6b6b;
-  }
-
-  .connection-lost-content p {
-    font-size: 1.2rem;
-    margin: 0;
-    opacity: 0.9;
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 0.6;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 1;
-      transform: scale(1.1);
-    }
-  }
-
-  @keyframes spin {
-    0% {
-      transform: rotate(0deg);
-    }
-    100% {
-      transform: rotate(360deg);
-    }
-  }
-
-  /* Progress Bar */
-  .progress-bar-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.2);
-    overflow: hidden;
-    z-index: 1;
-  }
-
-  .progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #6496ff, #4a7fff);
-    transition: width 1s ease;
-  }
-
-  /* TV Overlay System */
-  .tv-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      to bottom,
-      rgba(0, 0, 0, 0.8) 0%,
-      rgba(0, 0, 0, 0.6) 15%,
-      transparent 25%,
-      transparent 75%,
-      rgba(0, 0, 0, 0.6) 85%,
-      rgba(0, 0, 0, 0.8) 100%
-    );
-    pointer-events: none;
-    z-index: 10;
-    animation: auto-hide 4s ease-in-out 3s forwards;
-  }
-
-  .tv-overlay:hover,
-  .tv-overlay.show {
-    animation: none;
-    opacity: 1;
-  }
-
-  @keyframes auto-hide {
-    to {
-      opacity: 0;
-    }
-  }
-
-  .overlay-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 40px;
-    pointer-events: auto;
-  }
-
-  .overlay-bottom {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 30px 40px 40px;
-    pointer-events: auto;
-  }
-
-  /* Now Playing Section (Top Left) */
-  .now-playing {
-    flex: 1;
-    max-width: 60%;
-    color: #fff;
-  }
-
-  .show-times {
-    font-size: 1rem;
-    font-weight: 500;
-    margin: 0 0 10px 0;
-    color: rgba(255, 255, 255, 0.8);
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  .now-playing h1 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin: 0 0 15px 0;
-    text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9);
-    line-height: 1.2;
-  }
-
-  .now-playing p {
-    font-size: 1.1rem;
-    line-height: 1.4;
-    margin: 0 0 20px 0;
-    opacity: 0.9;
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  .upcoming-shows {
-    margin-top: 25px;
-    padding-top: 15px;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .upcoming-shows h4 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin: 0 0 15px 0;
-    color: rgba(255, 255, 255, 0.9);
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  .upcoming-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .upcoming-item {
-    display: flex;
-    gap: 12px;
-    align-items: baseline;
-  }
-
-  .upcoming-time {
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.7);
-    min-width: 60px;
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  .upcoming-title {
-    font-size: 0.95rem;
-    font-weight: 400;
-    color: rgba(255, 255, 255, 0.85);
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  /* Current Time Section (Top Right) */
-  .current-time {
-    display: flex;
-    align-items: center;
-    color: #fff;
-    flex-shrink: 0;
-  }
-
-  .current-time h1 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin: 0;
-    text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9);
-    font-family:
-      "Mona Sans",
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
-  }
-
-  .next-program {
-    margin-top: 20px;
-    padding-top: 15px;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .next-program h3 {
-    font-size: 1.3rem;
-    font-weight: 600;
-    margin: 0 0 8px 0;
-    color: rgba(255, 255, 255, 0.9);
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  .next-description {
-    font-size: 0.95rem;
-    line-height: 1.3;
-    margin: 0;
-    opacity: 0.75;
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  /* Channel Info Section (Top Right) */
-  .channel-info {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    color: #fff;
-    flex-shrink: 0;
-  }
-
-  .channel-logo {
-    width: 60px;
-    height: 60px;
-    object-fit: contain;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  }
-
-  .channel-text h2 {
-    font-size: 1.6rem;
-    font-weight: 600;
-    margin: 0 0 5px 0;
-    text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.9);
-  }
-
-  /* Channel Selector (Bottom) */
-  .channel-selector {
-    width: 100%;
-    overflow: visible;
-  }
-
-  .channels-horizontal {
-    display: flex;
-    gap: 20px;
-    overflow-x: auto;
-    overflow-y: visible;
-    padding: 20px 0 15px 0;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-  }
-
-  .channels-horizontal::-webkit-scrollbar {
-    height: 6px;
-  }
-
-  .channels-horizontal::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-  }
-
-  .channels-horizontal::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 3px;
-  }
-
-  .channels-horizontal::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
-  }
-
-  .channel-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-    padding: 25px 20px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 16px;
-    color: #fff;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    min-width: 160px;
-    flex-shrink: 0;
-    backdrop-filter: blur(10px);
-    overflow: visible;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  }
-
-  .channel-item:hover {
-    border-color: rgba(255, 255, 255, 0.6);
-    transform: translateY(-8px) scale(1.05);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
-  }
-
-  .channel-item.selected {
-    border-color: #6496ff;
-    box-shadow:
-      0 0 25px rgba(100, 150, 255, 0.4),
-      0 12px 48px rgba(0, 0, 0, 0.5);
-    transform: translateY(-8px) scale(1.05);
-  }
-
-  .channel-item .channel-logo {
-    width: 90px;
-    height: 90px;
-  }
-
-  .channel-details {
-    text-align: center;
-    overflow: visible;
-  }
-
-  .channel-name {
-    display: block;
-    font-family:
-      "Mona Sans",
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
-    font-size: 1.2rem;
-    font-weight: 600;
-    margin-bottom: 0;
-    text-align: center;
-    line-height: 1.3;
-    overflow: visible;
-    white-space: nowrap;
-  }
-
-  .controls-hint {
-    text-align: center;
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 0.875rem;
-    margin-top: 10px;
-  }
-
-  .controls-hint p {
-    margin: 0;
-  }
-
-  /* Responsive Design */
-  @media (max-width: 768px) {
-    .overlay-top {
-      flex-direction: column;
-      gap: 20px;
-      padding: 20px;
-    }
-
-    .now-playing {
-      max-width: 100%;
-    }
-
-    .now-playing h1 {
-      font-size: 1.8rem;
-    }
-
-    .now-playing p {
-      font-size: 1rem;
-    }
-
-    .channel-info {
-      align-self: flex-end;
-    }
-
-    .channel-logo {
-      width: 40px;
-      height: 40px;
-    }
-
-    .channel-text h2 {
-      font-size: 1.2rem;
-    }
-
-    .overlay-bottom {
-      padding: 20px;
-    }
-
-    .channels-horizontal {
-      gap: 15px;
-      padding: 15px 0 10px 0;
-    }
-
-    .channel-item {
-      min-width: 140px;
-      padding: 20px 15px;
-      gap: 12px;
-    }
-
-    .channel-item .channel-logo {
-      width: 75px;
-      height: 75px;
-    }
-
-    .channel-name {
-      font-size: 1rem;
-    }
-  }
-</style>
