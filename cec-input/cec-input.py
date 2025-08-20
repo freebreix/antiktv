@@ -45,29 +45,42 @@ DEFAULT_KEYMAP = {
     "num9": "KEY_9"
 }
 
-CEC_TO_SYMBOL = {
-    cec.CEC_USER_CONTROL_CODE_UP: "up",
-    cec.CEC_USER_CONTROL_CODE_DOWN: "down",
-    cec.CEC_USER_CONTROL_CODE_LEFT: "left",
-    cec.CEC_USER_CONTROL_CODE_RIGHT: "right",
-    cec.CEC_USER_CONTROL_CODE_SELECT: "enter",
-    cec.CEC_USER_CONTROL_CODE_EXIT: "back",
-    cec.CEC_USER_CONTROL_CODE_PLAY: "play",
-    cec.CEC_USER_CONTROL_CODE_PAUSE: "pause",
-    cec.CEC_USER_CONTROL_CODE_CHANNEL_UP: "channel_up",
-    cec.CEC_USER_CONTROL_CODE_CHANNEL_DOWN: "channel_down",
-    cec.CEC_USER_CONTROL_CODE_NUMBER0: "num0",
-    cec.CEC_USER_CONTROL_CODE_NUMBER1: "num1",
-    cec.CEC_USER_CONTROL_CODE_NUMBER2: "num2",
-    cec.CEC_USER_CONTROL_CODE_NUMBER3: "num3",
-    cec.CEC_USER_CONTROL_CODE_NUMBER4: "num4",
-    cec.CEC_USER_CONTROL_CODE_NUMBER5: "num5",
-    cec.CEC_USER_CONTROL_CODE_NUMBER6: "num6",
-    cec.CEC_USER_CONTROL_CODE_NUMBER7: "num7",
-    cec.CEC_USER_CONTROL_CODE_NUMBER8: "num8",
-    cec.CEC_USER_CONTROL_CODE_NUMBER9: "num9",
-    cec.CEC_USER_CONTROL_CODE_BACK: "back",
-}
+CEC_TO_SYMBOL = {}
+
+def _add_cec_mapping(attr_name: str, symbol: str) -> None:
+    """Add a mapping from a libcec constant name to a symbol if the
+    attribute exists on the imported `cec` module. This avoids import-time
+    AttributeErrors when running against different libcec versions.
+    """
+    val = getattr(cec, attr_name, None)
+    if val is not None:
+        CEC_TO_SYMBOL[val] = symbol
+
+# Populate known user control mappings safely (some constants may be
+# unavailable depending on the libcec version installed).
+for name, sym in [
+    ("CEC_USER_CONTROL_CODE_UP", "up"),
+    ("CEC_USER_CONTROL_CODE_DOWN", "down"),
+    ("CEC_USER_CONTROL_CODE_LEFT", "left"),
+    ("CEC_USER_CONTROL_CODE_RIGHT", "right"),
+    ("CEC_USER_CONTROL_CODE_SELECT", "enter"),
+    ("CEC_USER_CONTROL_CODE_EXIT", "back"),
+    ("CEC_USER_CONTROL_CODE_PLAY", "play"),
+    ("CEC_USER_CONTROL_CODE_PAUSE", "pause"),
+    ("CEC_USER_CONTROL_CODE_CHANNEL_UP", "channel_up"),
+    ("CEC_USER_CONTROL_CODE_CHANNEL_DOWN", "channel_down"),
+    ("CEC_USER_CONTROL_CODE_NUMBER0", "num0"),
+    ("CEC_USER_CONTROL_CODE_NUMBER1", "num1"),
+    ("CEC_USER_CONTROL_CODE_NUMBER2", "num2"),
+    ("CEC_USER_CONTROL_CODE_NUMBER3", "num3"),
+    ("CEC_USER_CONTROL_CODE_NUMBER4", "num4"),
+    ("CEC_USER_CONTROL_CODE_NUMBER5", "num5"),
+    ("CEC_USER_CONTROL_CODE_NUMBER6", "num6"),
+    ("CEC_USER_CONTROL_CODE_NUMBER7", "num7"),
+    ("CEC_USER_CONTROL_CODE_NUMBER8", "num8"),
+    ("CEC_USER_CONTROL_CODE_NUMBER9", "num9")
+]:
+    _add_cec_mapping(name, sym)
 
 KEY_NAME_TO_CODE = {name: getattr(uinput, name) for name in dir(uinput) if name.startswith("KEY_")}
 
