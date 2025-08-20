@@ -538,7 +538,6 @@ body {
   transition: all 0.3s ease;
   min-width: 160px;
   flex-shrink: 0;
-  backdrop-filter: blur(10px);
   overflow: visible;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
