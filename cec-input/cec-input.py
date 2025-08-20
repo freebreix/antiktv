@@ -107,6 +107,7 @@ class CecInput:
         self.config.clientVersion = cec.LIBCEC_VERSION_CURRENT
         self.config.deviceTypes.Add(cec.CEC_DEVICE_TYPE_RECORDING_DEVICE)
         self.config.SetLogCallback(self._on_cec_log)
+        self.config.SetKeyPressCallback(self._on_cec_keypress)
         self.lib = cec.ICECAdapter.Create(self.config)
         if not self.lib:
             raise RuntimeError("Failed to create CEC adapter")
@@ -120,11 +121,8 @@ class CecInput:
                     raise RuntimeError("Failed to open CEC adapter")
             else:
                 raise RuntimeError("No CEC adapters detected")
-        
-        # Enable key press detection
-        self.lib.EnableCallbacks(self)
 
-    def OnKeyPress(self, key, duration):
+    def _on_cec_keypress(self, key, duration):
         """Called by libcec when a key is pressed on the remote"""
         try:
             symbol = CEC_TO_SYMBOL.get(key)
