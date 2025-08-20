@@ -102,9 +102,8 @@ class CecInput:
         self.device = uinput.Device(events or [uinput.KEY_ENTER])
 
         # Setup CEC
-        self.lib = cec.ICECAdapter.Create(cec.libcec_configuration())
         self.config = cec.libcec_configuration()
-        self.config.strDeviceName = "antik-cec".encode('utf-8')
+        self.config.strDeviceName = "antik-cec"
         self.config.clientVersion = cec.LIBCEC_VERSION_CURRENT
         self.config.deviceTypes.Add(cec.CEC_DEVICE_TYPE_RECORDING_DEVICE)
         self.config.SetLogCallback(self._on_cec_log)
