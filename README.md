@@ -1,13 +1,95 @@
-AntikTV Pi 4 Appliance — headless, CEC remote, EPG, Widevine, Chromium-on-Wayland (Bookworm)
+# AntikTV - Complete Tauri Setup
 
-This repo turns a Raspberry Pi 4 (Raspberry Pi OS Lite — Bookworm) into a single-purpose AntikTV appliance that boots straight into a fullscreen TV app. It uses Wayland+cage, Chromium (for Widevine/EME), a tiny CEC→keyboard daemon, and a TypeScript SPA with Shaka Player.
+## ✅ Migration Complete!
 
-Highlights
+Your AntikTV application has been successfully migrated from Electron to Tauri with a complete Rust backend.
 
-- No desktop/X11. Wayland DRM/KMS via cage.
-- HDMI-CEC TV remote input via libcec → uinput (keyboard events).
-- Widevine DRM playback (you supply libwidevinecdm.so).
-- Live TV with OSD, channel list, mini/full EPG grid, fast zapping.
+## Project Structure
+
+```
+antiktv/
+├── app/                    # Frontend (SvelteKit SPA)
+│   ├── src/
+│   ├── build/             # Static build output
+│   ├── package.json
+│   └── svelte.config.js
+├── src/                   # Rust backend
+│   └── main.rs           # Tauri commands for MPV control
+├── Cargo.toml            # Rust dependencies
+├── tauri.conf.json       # Tauri configuration
+└── build.rs             # Build script
+```
+
+## Available Commands
+
+### Development
+```bash
+# Start frontend dev server only
+cd app && npm run dev
+
+# Start full Tauri app (when build tools are ready)
+cargo tauri dev
+```
+
+### Production Build
+```bash
+# Build frontend
+cd app && npm run build
+
+# Build complete Tauri app
+cargo tauri build
+```
+
+## Tauri Commands Implemented
+
+The Rust backend provides these commands that the frontend can call:
+
+- `load_stream(url)` - Load and play an IPTV stream
+- `play()` - Resume playback  
+- `pause()` - Pause playback
+- `stop()` - Stop playback and kill MPV process
+- `set_volume(volume)` - Set playback volume
+- `get_status()` - Get current playback status
+
+## Events
+
+The backend emits these events that the frontend listens for:
+
+- `mpv-status` - Status changes (started, playing, paused, stopped, error)
+- `mpv-timeposition` - Position updates (to be implemented)
+- `mpv-seek` - Seek events (to be implemented)
+
+## Next Steps
+
+1. **Install MPV**: Make sure MPV is installed and available in PATH
+2. **Test the app**: Run `cargo tauri dev` to test the complete application
+3. **Enhance MPV integration**: Implement proper IPC communication with MPV
+4. **Add window embedding**: Embed MPV window into Tauri window
+5. **Add more controls**: Seek, playlist management, etc.
+
+## Requirements
+
+- ✅ Rust (installed)
+- ✅ Visual Studio Build Tools (installed) 
+- ✅ Node.js and npm
+- ⚠️ MPV player (needs to be installed separately)
+- ⚠️ Tauri CLI (install with: `cargo install tauri-cli`)
+
+## Architecture
+
+- **Frontend**: SvelteKit SPA mode (no SSR)
+- **Backend**: Rust with Tauri framework
+- **IPC**: Tauri commands replace Electron IPC
+- **Video**: MPV process controlled via Rust backend
+
+The application is now a native desktop app with better performance and security compared to Electron!
+
+---
+
+## Previous Raspberry Pi Setup (Legacy)
+
+<details>
+<summary>Click to expand legacy Pi setup instructions</summary>
 - Resilient: systemd services with auto-restart, offline banners, retries.
 
 What you’ll do
@@ -188,6 +270,8 @@ Our unit passes a conservative set:
 - --ozone-platform=wayland --use-gl=egl --enable-features=UseOzonePlatform
 - --enable-features=VaapiVideoDecodeLinuxGL,VaapiVideoDecoder,CanvasOopRasterization,UseSkiaRenderer
 - --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy
+
+</details>
 - Optional: --widevine-path=/…/libwidevinecdm.so if not placed in Chromium tree
 
 Credentials

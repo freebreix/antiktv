@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getGlobalAntikClient } from '$lib/server/antikClient';
 
-export const GET: RequestHandler = async ({ url, request }) => {
+export const GET: RequestHandler = async ({ url }) => {
   try {
     const channelId = url.searchParams.get('channel') || url.searchParams.get('channelId');
     
@@ -15,11 +15,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
     
     console.log('📡 Stream API - Starting request for channel:', channelId);
     
-    const deviceId = request.headers.get('X-Device-ID');
-    console.log('📡 Stream API - Device ID from header:', deviceId);
-    console.log('📡 Stream API - All headers:', Object.fromEntries(request.headers.entries()));
-    
-    const client = getGlobalAntikClient(deviceId || undefined);
+    // Use global client with environment device ID
+    const client = getGlobalAntikClient();
     console.log('📡 Stream API - Using client with deviceId:', client.persistentDeviceId);
     
     const streamUrl = await client.getStreamUrl(channelId);

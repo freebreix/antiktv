@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getOrCreateDeviceId } from "$lib/client/deviceId";
+  import MPVPlayer from "$lib/components/MPVPlayer.svelte";
   import type { PageData } from "./$types";
 
   interface Channel {
@@ -21,11 +21,9 @@
   let selectedChannelIndex = $state(0);
   let loading = $state(true);
   let error = $state<string | null>(data.error || null);
-  let deviceId = $state<string>(data.deviceId || "");
 
   // Video player state
-  let videoElement = $state<HTMLVideoElement>();
-  let dashPlayer: any = null;
+  let mpvPlayer: any = null;
   let currentChannelInfo = $state<any>(null);
   let currentStreamUrl = $state<string | null>(null);
   let isVideoLoading = $state(false);
@@ -73,29 +71,9 @@
     reconnecting: "Újracsatlakozás...",
   };
 
-  // Reactive effect to initialize player when video element is ready
-  $effect(() => {
-    if (videoElement && currentStreamUrl && !dashPlayer) {
-      initializePlayer();
-    }
-  });
-
   onMount(() => {
     const initialize = async () => {
       try {
-        // Get device ID from server cookie (same as server uses)
-        const cookies = document.cookie.split(";");
-        let cookieDeviceId = "";
-        for (const cookie of cookies) {
-          const [name, value] = cookie.trim().split("=");
-          if (name === "device-id" && value) {
-            cookieDeviceId = decodeURIComponent(value);
-            break;
-          }
-        }
-
-        deviceId = cookieDeviceId || getOrCreateDeviceId();
-        console.log("📱 Using device ID:", deviceId);
         console.log("📺 Loaded", channels.length, "channels from server");
 
         // Load last selected channel from localStorage
@@ -111,7 +89,6 @@
         }
 
         if (channels.length > 0) {
-          await loadDashJS();
           await loadCurrentChannel();
         }
 
@@ -129,9 +106,6 @@
 
     return () => {
       window.removeEventListener("keydown", handleKeydown);
-      if (dashPlayer) {
-        dashPlayer.reset();
-      }
       if (channelChangeTimeout) {
         clearTimeout(channelChangeTimeout);
       }
@@ -169,22 +143,6 @@
 
     // Cleanup interval on component destroy
     return () => clearInterval(timeInterval);
-  }
-
-  // Load dash.js library
-  async function loadDashJS() {
-    return new Promise((resolve, reject) => {
-      if ((window as any).dashjs) {
-        resolve(undefined);
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = "https://cdn.dashjs.org/latest/dash.all.min.js";
-      script.onload = () => resolve(undefined);
-      script.onerror = () => reject(new Error("Failed to load dash.js"));
-      document.head.appendChild(script);
-    });
   }
 
   // Load current program from EPG for a specific channel
@@ -344,19 +302,14 @@
 
       // Get stream URL
       const streamResponse = await fetch(
-        `/api/stream?channel=${selectedChannel.id}`,
-        {
-          headers: {
-            "X-Device-ID": deviceId,
-          },
-        }
+        `/api/stream?channel=${selectedChannel.id}`
       );
 
       const streamData = await streamResponse.json();
 
       if (streamData.success && streamData.streamUrl) {
         currentStreamUrl = streamData.streamUrl;
-        await initializePlayer();
+        // MPV player will automatically load and play the stream via reactive effects
       } else {
         throw new Error("No stream URL available");
       }
@@ -366,128 +319,21 @@
     }
   }
 
-  // Initialize DASH player
-  async function initializePlayer() {
-    if (!currentStreamUrl || !videoElement) {
-      console.log("🎬 Waiting for video element or stream URL...");
-      return;
+  // Handle MPV player status changes
+  function handleMPVStatusChange(status: any) {
+    isVideoLoading = status.loading;
+    isVideoBuffering = status.buffering;
+    isConnectionLost = !!status.error;
+
+    if (status.playing && !status.paused) {
+      playingChannelIndex = selectedChannelIndex;
     }
+  }
 
-    console.log("🎬 Initializing player with URL:", currentStreamUrl);
-
-    // Set loading state
-    isVideoLoading = true;
-
-    // Clean up previous player
-    if (dashPlayer) {
-      dashPlayer.reset();
-    }
-
-    const dashjs = (window as any).dashjs;
-    if (!dashjs) {
-      console.error("🎬 dash.js not loaded");
-      isVideoLoading = false;
-      return;
-    }
-
-    dashPlayer = dashjs.MediaPlayer().create();
-
-    // Set up video element event listeners for loading states
-    if (videoElement) {
-      videoElement.addEventListener("loadstart", () => {
-        isVideoLoading = true;
-        isVideoBuffering = false;
-        isConnectionLost = false;
-      });
-
-      videoElement.addEventListener("loadeddata", () => {
-        isVideoLoading = false;
-        isVideoBuffering = false;
-        isConnectionLost = false;
-      });
-
-      videoElement.addEventListener("waiting", () => {
-        isVideoBuffering = true;
-      });
-
-      videoElement.addEventListener("canplay", () => {
-        isVideoBuffering = false;
-        isConnectionLost = false;
-      });
-
-      videoElement.addEventListener("playing", () => {
-        isVideoLoading = false;
-        isVideoBuffering = false;
-        isConnectionLost = false;
-        playingChannelIndex = selectedChannelIndex; // Update which channel is actually playing
-      });
-
-      // Connection lost detection
-      videoElement.addEventListener("error", () => {
-        console.error("🎬 Video element error - connection likely lost");
-        isConnectionLost = true;
-        isVideoLoading = false;
-        isVideoBuffering = false;
-      });
-
-      videoElement.addEventListener("stalled", () => {
-        console.warn("🎬 Video stalled - possible connection issue");
-        // Set connection lost after 10 seconds of stalling
-        setTimeout(() => {
-          if (videoElement && videoElement?.readyState < 3) {
-            isConnectionLost = true;
-          }
-        }, 10000);
-      });
-    }
-
-    // Configure DRM before initializing
-    const protectionData = {
-      "com.widevine.alpha": {
-        serverURL: `${window.location.origin}/api/drm-proxy`,
-        httpRequestHeaders: {
-          "Content-Type": "application/octet-stream",
-          "X-Device-ID": deviceId,
-        },
-        withCredentials: false,
-        priority: 0,
-      },
-    };
-
-    dashPlayer.setProtectionData(protectionData);
-
-    // Setup event listeners
-    dashPlayer.on("error", (e: any) => {
-      console.error("🎬 Player error:", e);
-
-      // Check if it's a network-related error
-      const errorCode = e.error?.code;
-      const errorMessage = e.error?.message || "";
-
-      if (
-        errorCode === 25 ||
-        errorCode === 4 ||
-        errorMessage.includes("network") ||
-        errorMessage.includes("timeout")
-      ) {
-        isConnectionLost = true;
-        console.error("🎬 Network connection lost");
-      } else {
-        error = `Lejátszási hiba: ${errorMessage || "Ismeretlen hiba"}`;
-      }
-
-      isVideoLoading = false;
-      isVideoBuffering = false;
-    });
-
-    dashPlayer.on("playbackStarted", () => {
-      console.log("🎬 Video playback started for", currentChannelInfo?.name);
-      isVideoLoading = false;
-      isConnectionLost = false;
-    });
-
-    // Initialize the player
-    dashPlayer.initialize(videoElement, currentStreamUrl, true);
+  // Handle MPV player errors
+  function handleMPVError(errorMessage: string) {
+    error = `Lejátszási hiba: ${errorMessage}`;
+    isConnectionLost = true;
   }
 
   // Reset the selector auto-hide timeout
@@ -718,12 +564,8 @@
       case "P": // KEY_P from keymap
       case " ": // Also support spacebar
         event.preventDefault();
-        if (videoElement) {
-          if (videoElement.paused) {
-            videoElement.play();
-          } else {
-            videoElement.pause();
-          }
+        if (mpvPlayer) {
+          mpvPlayer.togglePlayPause();
         }
         break;
     }
@@ -754,14 +596,35 @@
   <main class="tv-player">
     <!-- Main Video Player -->
     <div class="video-container">
-      <video
-        bind:this={videoElement}
-        autoplay
-        class="main-video"
-        onclick={() => showSelector()}
+      <MPVPlayer
+        bind:this={mpvPlayer}
+        streamUrl={currentStreamUrl}
+        autoplay={true}
+        onStatusChange={handleMPVStatusChange}
+        onError={handleMPVError}
+        onLoadStart={() => {
+          isVideoLoading = true;
+        }}
+        onCanPlay={() => {
+          isVideoLoading = false;
+          isVideoBuffering = false;
+        }}
+        onPlaying={() => {
+          isVideoLoading = false;
+          isVideoBuffering = false;
+          playingChannelIndex = selectedChannelIndex;
+        }}
+        onWaiting={() => {
+          isVideoBuffering = true;
+        }}
       >
-        <track kind="captions" src="" label="No captions available" />
-      </video>
+        <!-- Click handler for showing selector -->
+        <div
+          class="video-click-overlay"
+          onclick={() => showSelector()}
+          style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;"
+        />
+      </MPVPlayer>
 
       <!-- Fallback content when no video is loaded -->
       {#if !currentStreamUrl}

@@ -8,27 +8,12 @@ interface Channel {
   number?: number;
 }
 
-export const load: ServerLoad = async ({ cookies }) => {
+export const load: ServerLoad = async () => {
   try {
     console.log('📡 Server-side page load - Loading channels and EPG');
     
-    // Get device ID from cookie or create a new one
-    let deviceId = cookies.get('device-id');
-    if (!deviceId) {
-      deviceId = crypto.randomUUID();
-      cookies.set('device-id', deviceId, {
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365 * 10, // 10 years
-        httpOnly: false,
-        secure: false,
-        sameSite: 'lax'
-      });
-    }
-    
-    console.log('📡 Server-side page load - Device ID:', deviceId);
-    
-    // Get Antik client and load channels
-    const client = getGlobalAntikClient(deviceId);
+    // Get Antik client (device ID from environment variable)
+    const client = getGlobalAntikClient();
     const rawChannels = await client.getChannels();
     
     console.log('📡 Server-side page load - Loaded', rawChannels.length, 'channels');
@@ -49,8 +34,7 @@ export const load: ServerLoad = async ({ cookies }) => {
     
     return {
       channels: channels,
-      epg: epgData,
-      deviceId: deviceId
+      epg: epgData
     };
     
   } catch (error) {
@@ -59,7 +43,6 @@ export const load: ServerLoad = async ({ cookies }) => {
     return {
       channels: [],
       epg: [],
-      deviceId: '',
       error: error instanceof Error ? error.message : 'Unknown error'
     };
   }

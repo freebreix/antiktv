@@ -47,14 +47,23 @@ export class AntikClient {
     const env = getAntikEnv();
     const region = opts?.region || env.region || 'SK';
     this.baseUrl = opts?.baseUrl || env.apiUrl || defaultBaseUrl(region);
-    this.deviceId = opts?.deviceId || env.deviceId;
-    // Use provided device ID, or fall back to persistent one if none provided
-    this.persistentDeviceId = opts?.deviceId || this.getOrCreatePersistentDeviceId();
+    
+    // Always prefer environment device ID, then provided device ID, then generated one
+    if (env.deviceId) {
+      this.deviceId = env.deviceId;
+      this.persistentDeviceId = env.deviceId;
+    } else if (opts?.deviceId) {
+      this.deviceId = opts.deviceId;
+      this.persistentDeviceId = opts.deviceId;
+    } else {
+      this.deviceId = undefined;
+      this.persistentDeviceId = this.getOrCreatePersistentDeviceId();
+    }
     
     console.log('🔧 AntikClient created with:');
     console.log('🔧 - baseUrl:', this.baseUrl);
-    console.log('🔧 - provided deviceId:', opts?.deviceId);
     console.log('🔧 - env deviceId:', env.deviceId);
+    console.log('🔧 - provided deviceId:', opts?.deviceId);
     console.log('🔧 - final persistentDeviceId:', this.persistentDeviceId);
   }
 
@@ -387,14 +396,9 @@ export class AntikClient {
 // Global singleton instance to maintain session state across requests
 let globalAntikClient: AntikClient | null = null;
 
-export function getGlobalAntikClient(deviceId?: string): AntikClient {
+export function getGlobalAntikClient(): AntikClient {
   if (!globalAntikClient) {
-    globalAntikClient = new AntikClient({ deviceId });
-  } else if (deviceId && globalAntikClient.persistentDeviceId !== deviceId) {
-    // If device ID changed, create a new instance
-    console.log('🔧 Device ID changed, creating new client instance');
-    globalAntikClient = new AntikClient({ deviceId });
+    globalAntikClient = new AntikClient();
   }
-  // If no device ID is provided, reuse the existing client
   return globalAntikClient;
 }

@@ -1,0 +1,7 @@
+************************************* Invoked: Wed Aug 20 20:33:13 2025
+[0] Arguments: C:\RyzeCode\antiktv\app\msys2-installer.exe, install, --root, C:\msys64, --confirm-command
+[16] Operations sanity check succeeded.
+[30] Using metadata cache from "C:/Users/Brendon/AppData/Local/cache\\qt-installer-framework\\d75f1c19-3379-3717-ae8d-1404b51494a9"
+[31] Found 0 cached items.
+[35] Loaded control script ":/metadata/installer-config/control_js"
+[36] TargetDirectoryInUse : Error : The directory you selected already exists and contains an installation. Choose a different target for installation.
