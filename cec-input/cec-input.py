@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import signal
+import subprocess
+import shutil
 import sys
 import time
 
@@ -78,7 +80,8 @@ for name, sym in [
     ("CEC_USER_CONTROL_CODE_NUMBER6", "num6"),
     ("CEC_USER_CONTROL_CODE_NUMBER7", "num7"),
     ("CEC_USER_CONTROL_CODE_NUMBER8", "num8"),
-    ("CEC_USER_CONTROL_CODE_NUMBER9", "num9")
+    ("CEC_USER_CONTROL_CODE_NUMBER9", "num9"),
+    ("CEC_USER_CONTROL_CODE_STOP", "stop")
 ]:
     _add_cec_mapping(name, sym)
 
@@ -127,6 +130,10 @@ class CecInput:
         try:
             symbol = CEC_TO_SYMBOL.get(key)
             if symbol:
+                # The playback "stop" (filled square) button should shut down the system immediately
+                if symbol == "stop":
+                    self._shutdown()
+                    return 0
                 mapped = self.keymap.get(symbol)
                 if mapped:
                     self._emit_key(mapped)
@@ -148,6 +155,23 @@ class CecInput:
             return
         self.device.emit_click(code)
         LOG.debug("Emitted %s", key_name)
+
+    def _shutdown(self):
+        """Attempt to power off the system immediately.
+
+        This tries `systemctl poweroff` first, then falls back to
+        `shutdown -h now`. If neither command is available it logs an error.
+        """
+        LOG.info("Shutdown button pressed — attempting to power off now")
+        try:
+            if shutil.which("systemctl"):
+                subprocess.run(["systemctl", "poweroff"], check=False)
+            elif shutil.which("shutdown"):
+                subprocess.run(["shutdown", "-h", "now"], check=False)
+            else:
+                LOG.error("No known shutdown command found on PATH")
+        except Exception as e:
+            LOG.error("Failed to execute shutdown: %s", e)
 
     def loop(self):
         LOG.info("Started CEC input loop")
