@@ -120,7 +120,23 @@ class CecInput:
                     raise RuntimeError("Failed to open CEC adapter")
             else:
                 raise RuntimeError("No CEC adapters detected")
-        self.lib.SetCommandCallback(self._on_cec_command)
+        
+        # Enable key press detection
+        self.lib.EnableCallbacks(self)
+
+    def OnKeyPress(self, key, duration):
+        """Called by libcec when a key is pressed on the remote"""
+        try:
+            symbol = CEC_TO_SYMBOL.get(key)
+            if symbol:
+                mapped = self.keymap.get(symbol)
+                if mapped:
+                    self._emit_key(mapped)
+                else:
+                    LOG.debug("No mapping for %s", symbol)
+        except Exception as e:
+            LOG.warning("CEC keypress error: %s", e)
+        return 0
 
     def _on_cec_log(self, level, time, message):
         # Keep it quiet unless errors
@@ -134,22 +150,6 @@ class CecInput:
             return
         self.device.emit_click(code)
         LOG.debug("Emitted %s", key_name)
-
-    def _on_cec_command(self, cmd):
-        try:
-            if cmd.opcode == cec.CEC_OPCODE_USER_CONTROL_PRESSED:
-                uc = cec.libcec_user_control_code(cmd.parameters.at(0))
-                symbol = CEC_TO_SYMBOL.get(uc)
-                if symbol:
-                    mapped = self.keymap.get(symbol)
-                    if mapped:
-                        self._emit_key(mapped)
-                    else:
-                        LOG.debug("No mapping for %s", symbol)
-            return 0
-        except Exception as e:
-            LOG.warning("CEC command error: %s", e)
-            return 0
 
     def loop(self):
         LOG.info("Started CEC input loop")
